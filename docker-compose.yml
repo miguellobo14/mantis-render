@@ -1,0 +1,72 @@
+x-backend: &backend
+  build: ./backend
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DATABASE_URL: postgresql+asyncpg://mantis:mantis@postgres:5432/mantis
+    REDIS_URL: redis://redis:6379
+  volumes:
+    - media:/data/media
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mantis
+      POSTGRES_PASSWORD: mantis
+      POSTGRES_DB: mantis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mantis"]
+      interval: 2s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 15
+
+  api:
+    <<: *backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *backend
+    command: arq app.worker.WorkerSettings
+
+  mcp:
+    build: ./backend
+    command: python -m app.mcp_server
+    environment:
+      MANTIS_API_URL: http://api:8000
+    volumes:
+      - ./inbox:/inbox:ro
+    ports:
+      - "8001:8001"
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  media:
