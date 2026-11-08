@@ -21,6 +21,11 @@ class Settings(BaseSettings):
 
     fal_key: str = ""
     fal_model: str = "fal-ai/flux-pro/kontext"
+    # Same model with a second, style-reference image.
+    fal_multi_model: str = "fal-ai/flux-pro/kontext/multi"
+    # Inpainting: changes only the area painted in the mask.
+    fal_fill_model: str = "fal-ai/flux-pro/v1/fill"
+    fal_upscale_model: str = "fal-ai/seedvr/upscale/image"
     fal_timeout_s: int = 300
 
     render_max_tries: int = 3

@@ -6,8 +6,9 @@ import "./globals.css";
 const roboto = Roboto({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-roboto" });
 
 export const metadata: Metadata = {
-  title: "Mantis Render",
-  description: "Renders arquitectónicos con IA a partir de una vista de tu modelo.",
+  title: "Mantis Render · Renders con IA para arquitectura y construcción",
+  description:
+    "Sube una vista de SketchUp, un boceto o una foto de la obra y muestra cómo va a quedar con renders fotorrealistas en minutos.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

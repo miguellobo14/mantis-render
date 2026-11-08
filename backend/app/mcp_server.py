@@ -21,9 +21,11 @@ INBOX = Path(os.environ.get("MANTIS_INBOX", "/inbox")).resolve()
 mcp = MCPServer(
     "mantis-render",
     instructions=(
-        "Architectural render pipeline. create_render queues a photorealistic render from a "
-        "reference image and a short brief; renders take from seconds to a few minutes, so poll "
-        "get_render until status is 'done' or 'failed'."
+        "Architectural render pipeline. create_render queues a photorealistic render (1-4 "
+        "versions) from a reference image and a short brief; list_presets gives the valid modes "
+        "and styles. Once a render is done, edit_render changes one thing in a version and "
+        "upscale_render makes a 4K copy of it. Every job takes from seconds to a few minutes, so "
+        "poll get_render until status is 'done' or 'failed'."
     ),
 )
 
@@ -37,8 +39,19 @@ async def _api(method: str, path: str, **kwargs: Any) -> Any:
 
 
 @mcp.tool()
+async def list_presets() -> dict:
+    """List the project modes (interior, exterior, obra gris...) and styles create_render accepts."""
+    return await _api("GET", "/presets")
+
+
+@mcp.tool()
 async def create_render(
-    brief: str, image_url: str | None = None, inbox_file: str | None = None
+    brief: str,
+    image_url: str | None = None,
+    inbox_file: str | None = None,
+    mode: str = "interior",
+    style: str | None = None,
+    variants: int = 1,
 ) -> dict:
     """Queue a photorealistic render of an interior or building.
 
@@ -46,6 +59,9 @@ async def create_render(
         brief: What the client wants, e.g. "cocina moderna, madera clara, luz de tarde".
         image_url: Public URL of the reference image (JPG, PNG or WebP).
         inbox_file: Alternatively, the name of a file in the project's inbox/ folder.
+        mode: Project mode id from list_presets, e.g. "interior", "exterior" or "obra".
+        style: Optional style id from list_presets, e.g. "nordico".
+        variants: How many versions to generate, 1 to 4 (each one is billed).
 
     Pass exactly one of image_url or inbox_file. Returns the job; its id is used by get_render.
     """
@@ -68,18 +84,43 @@ async def create_render(
         content_type = mimetypes.guess_type(path.name)[0] or ""
         filename = path.name
 
+    form = {"brief": brief, "mode": mode, "variants": str(variants)}
+    if style:
+        form["style"] = style
+    return await _api("POST", "/renders", data=form, files={"image": (filename, data, content_type)})
+
+
+@mcp.tool()
+async def edit_render(job_id: str, instruction: str, source_index: int = 0) -> dict:
+    """Change one thing in a finished render, e.g. "cambia solo el piso por porcelanato gris".
+
+    Args:
+        job_id: A done render or edit job.
+        instruction: The change, in the client's words.
+        source_index: Which version of that job to edit (0 = first).
+
+    Returns a new edit job; poll it with get_render.
+    """
     return await _api(
         "POST",
-        "/renders",
-        data={"brief": brief},
-        files={"image": (filename, data, content_type)},
+        f"/renders/{job_id}/edit",
+        data={"instruction": instruction, "source_index": str(source_index)},
+    )
+
+
+@mcp.tool()
+async def upscale_render(job_id: str, source_index: int = 0) -> dict:
+    """Make a 4K copy of one version of a finished render or edit. Returns a new upscale job."""
+    return await _api(
+        "POST", f"/renders/{job_id}/upscale", data={"source_index": str(source_index)}
     )
 
 
 @mcp.tool()
 async def get_render(job_id: str) -> dict:
-    """Get a render job: status (queued, processing, done, failed), the prompt Claude wrote for
-    the image model, and result_url once it is done."""
+    """Get a job: status (queued, processing, done, failed), the prompt Claude wrote for the
+    image model, result_urls once it is done, and, for an original render, the edits and
+    upscales made from it under `derived`."""
     return await _api("GET", f"/renders/{job_id}")
 
 
